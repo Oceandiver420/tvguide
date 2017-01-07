@@ -314,6 +314,7 @@ class TVGuide(xbmcgui.WindowXML):
         self.currentProgram = None
         self.focusedProgram = None
         self.quickEpgShowInfo = False
+        self.osdShowInfo = True
 
         f = xbmcvfs.File('special://profile/addon_data/script.tvguide.fullscreen/categories.ini','rb')
         lines = f.read().splitlines()
@@ -646,6 +647,10 @@ class TVGuide(xbmcgui.WindowXML):
             self.viewStartDate -= datetime.timedelta(minutes=self.viewStartDate.minute % 60, seconds=self.viewStartDate.second)
             self.currentProgram = self.database.getCurrentProgram(self.currentChannel)
             self.onRedrawEPG(self.channelIdx, self.viewStartDate)
+
+        elif action.getId() in COMMAND_ACTIONS["GO_TO_FIRST_CHANNEL"]:
+            self.osdShowInfo = not self.osdShowInfo
+            self.setControlVisible(self.C_MAIN_OSD_DESCRIPTION,self.osdShowInfo)
 
         elif action.getId() in COMMAND_ACTIONS["PLAY"]:
             self._hideOsd()
