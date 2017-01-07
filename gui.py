@@ -648,7 +648,7 @@ class TVGuide(xbmcgui.WindowXML):
             self.currentProgram = self.database.getCurrentProgram(self.currentChannel)
             self.onRedrawEPG(self.channelIdx, self.viewStartDate)
 
-        elif action.getId() in COMMAND_ACTIONS["GO_TO_FIRST_CHANNEL"]:
+        elif action.getId() in COMMAND_ACTIONS["TOGGLE_DESCRIPTION"]:
             self.osdShowInfo = not self.osdShowInfo
             self.setControlVisible(self.C_MAIN_OSD_DESCRIPTION,self.osdShowInfo)
 
