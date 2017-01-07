@@ -212,6 +212,7 @@ class TVGuide(xbmcgui.WindowXML):
     C_MAIN_MOUSE_MINE1 = 4317
     C_MAIN_MOUSE_NEXT_DAY = 4318
     C_MAIN_MOUSE_PREV_DAY = 4319
+    C_MAIN_MOUSE_TOGGLE_DESCRIPTION = 4320
     C_MAIN_BACKGROUND = 4600
     C_MAIN_HEADER = 4601
     C_MAIN_FOOTER = 4602
@@ -1114,6 +1115,10 @@ class TVGuide(xbmcgui.WindowXML):
             return
         elif controlId == self.C_MAIN_MOUSE_SEARCH:
             self.programSearchSelect()
+            return
+        elif controlId == self.C_MAIN_MOUSE_TOGGLE_DESCRIPTION:
+            self.osdShowInfo = not self.osdShowInfo
+            self.setControlVisible(self.C_MAIN_OSD_DESCRIPTION,self.osdShowInfo)
             return
         program = self._getProgramFromControl(self.getControl(controlId))
         if self.mode == MODE_QUICK_EPG:
