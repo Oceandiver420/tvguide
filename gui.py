@@ -252,6 +252,7 @@ class TVGuide(xbmcgui.WindowXML):
     C_MAIN_CATEGORY = 7004
     C_MAIN_PROGRAM_CATEGORIES = 7005
     C_MAIN_ACTIONS = 7100
+    C_MAIN_ACTION_BAR = 7101
     C_MAIN_LAST_PLAYED = 8000
     C_MAIN_LAST_PLAYED_TITLE = 8001
     C_MAIN_LAST_PLAYED_TIME = 8002
@@ -445,6 +446,7 @@ class TVGuide(xbmcgui.WindowXML):
         self._hideControl(self.C_QUICK_EPG_MOUSE_CONTROLS)
         self._hideControl(self.C_MAIN_LAST_PLAYED_MOUSE_CONTROLS)
         self._hideControl(self.C_MAIN_MOUSE_CONTROLS, self.C_MAIN_OSD)
+        self._hideControl(self.C_MAIN_ACTION_BAR)
         self._hideControl(self.C_MAIN_LAST_PLAYED)
         self._hideControl(self.C_UP_NEXT)
         self._hideControl(self.C_QUICK_EPG)
@@ -790,6 +792,12 @@ class TVGuide(xbmcgui.WindowXML):
             self.setFocusId(self.C_MAIN_CATEGORY)
             return
 
+        elif action.getId() in COMMAND_ACTIONS["ACTION_BAR"] and self.getControl(self.C_MAIN_ACTIONS):
+            self._showControl(self.C_MAIN_ACTION_BAR)
+            self.getControl(self.C_MAIN_ACTIONS).selectItem(self.action_index)
+            time.sleep(1)
+            self.setFocusId(self.C_MAIN_ACTIONS)
+            return
 
         controlInFocus = None
         currentFocus = self.focusPoint
@@ -1163,6 +1171,7 @@ class TVGuide(xbmcgui.WindowXML):
             cList = self.getControl(self.C_MAIN_ACTIONS)
             pos = cList.getSelectedPosition()
             self.action_index = pos
+            self._hideControl(self.C_MAIN_ACTION_BAR)
             xbmc.executebuiltin(self.actions[pos][1])
         if controlId == self.C_MAIN_CATEGORY:
             cList = self.getControl(self.C_MAIN_CATEGORY)
@@ -2289,6 +2298,7 @@ class TVGuide(xbmcgui.WindowXML):
 
     def _up(self, currentFocus):
         if self.getFocusId() in [self.C_MAIN_ACTIONS]:
+            self._hideControl(self.C_MAIN_ACTION_BAR)
             currentFocus.y = 1280
         currentFocus.x = self.focusPoint.x
         control = self._findControlAbove(currentFocus)
@@ -2334,7 +2344,10 @@ class TVGuide(xbmcgui.WindowXML):
             self.setFocus(control)
         elif control is None:
             if self.getControl(self.C_MAIN_ACTIONS) and ADDON.getSetting('action.bar') == 'true' and ADDON.getSetting('down.action') == 'true':
+                self._showControl(self.C_MAIN_ACTION_BAR)
+                time.sleep(1)
                 self.setFocusId(self.C_MAIN_ACTIONS)
+                self.getControl(self.C_MAIN_ACTIONS).selectItem(self.action_index)
                 return
             self.focusPoint.y = self.epgView.top
             self.onRedrawEPG(self.channelIdx + CHANNELS_PER_PAGE, self.viewStartDate,

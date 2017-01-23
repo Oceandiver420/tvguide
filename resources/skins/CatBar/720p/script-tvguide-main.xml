@@ -2042,14 +2042,16 @@
                 </focusedlayout>
             </control>
 
-
+            <control type="label" id="7101">
+                <description>visibility marker for action bar</description>
+            </control>
             <control type="list" id="7100">
                 <description>action bar</description>
                 <left>0</left>
                 <top>30r</top>
                 <width>1280</width>
                 <height>28</height>
-                <visible>true</visible>
+                <visible>!Control.IsVisible(7101)</visible>
                 <onup></onup>
                 <ondown></ondown>
                 <onleft></onleft>
