@@ -2433,7 +2433,10 @@ class TVGuide(xbmcgui.WindowXML):
             return
         now = datetime.datetime.now()
         offset = now - programList[0].startDate
-        f = xbmcvfs.File('special://profile/addon_data/script.tvguide.fullscreen/catchup_channel.list','wb')
+        if ADDON.getSetting('catchup.playlist') == 'true':
+            playlist = xbmc.PlayList (xbmc.PLAYLIST_VIDEO)
+        else:
+            f = xbmcvfs.File('special://profile/addon_data/script.tvguide.fullscreen/catchup_channel.list','wb')
         first_cmd = None
         for program in programList:
             program.startDate += offset
@@ -2460,21 +2463,28 @@ class TVGuide(xbmcgui.WindowXML):
 
             catchup = ADDON.getSetting('catchup.text').lower()
             if selection == 0:
-                cmd = "RunPlugin(plugin://plugin.video.%s/movies/play_by_name/%s/%s)" % (catchup, title, program.language)
+                cmd = "plugin://plugin.video.%s/movies/play_by_name/%s/%s" % (catchup, title, program.language)
             elif selection == 1:
                 if program.season and program.episode:
-                    cmd = "RunPlugin(plugin://plugin.video.%s/tv/play_by_name/%s/%s/%s/%s)" % (
+                    cmd = "plugin://plugin.video.%s/tv/play_by_name/%s/%s/%s/%s" % (
                         catchup, title, program.season, program.episode, program.language)
                 else:
-                    cmd = "RunPlugin(plugin://plugin.video.%s/tv/play_by_name_only/%s/%s)" % (
+                    cmd = "plugin://plugin.video.%s/tv/play_by_name_only/%s/%s" % (
                         catchup, title, program.language)
 
-            f.write("%s\n" % name.encode('utf-8', 'replace'))
-            if not first_cmd:
-                first_cmd = cmd
+
+            if ADDON.getSetting('catchup.playlist') == 'true':
+                listitem = xbmcgui.ListItem (program.title, thumbnailImage=program.imageSmall)
+                listitem.setInfo('video', {'Title': program.title})
+                playlist.add(url=cmd, listitem=listitem)
             else:
-                xbmc.executebuiltin('AlarmClock(%s,%s,%d,True)' % (name.encode('utf-8', 'replace'), cmd, timeToAutoplay ))
-        f.close()
+                f.write("%s\n" % name.encode('utf-8', 'replace'))
+                cmd = "RunPlugin(%s)" % cmd
+                if not first_cmd:
+                    first_cmd = cmd
+                else:
+                    xbmc.executebuiltin('AlarmClock(%s,%s,%d,True)' % (name.encode('utf-8', 'replace'), cmd, timeToAutoplay ))
+
         catchup = ADDON.getSetting('catchup.text')
         channel = utils.Channel("catchup", catchup, '', "special://home/addons/plugin.video.%s/icon.png" % catchup.lower(), "catchup", True)
         self.database.updateProgramList(None,programList,channel)
@@ -2482,7 +2492,11 @@ class TVGuide(xbmcgui.WindowXML):
         if ADDON.getSetting('catchup.channel') == 'true':
             self.currentChannel = channel
             self.currentProgram = self.database.getCurrentProgram(self.currentChannel)
-        xbmc.executebuiltin(first_cmd)
+        if ADDON.getSetting('catchup.playlist') == 'true':
+            self.player.play(playlist)
+        else:
+            f.close()
+            xbmc.executebuiltin(first_cmd)
 
     def playChannel(self, channel, program = None):
         if ADDON.getSetting('epg.video.pip') == 'true':
