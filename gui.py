@@ -2435,6 +2435,8 @@ class TVGuide(xbmcgui.WindowXML):
         offset = now - programList[0].startDate
         if ADDON.getSetting('catchup.playlist') == 'true':
             playlist = xbmc.PlayList (xbmc.PLAYLIST_VIDEO)
+            f = xbmcvfs.File('special://profile/addon_data/script.tvguide.fullscreen/catchup_playlist.m3u','wb')
+            f.write('#EXTM3U\n')
         else:
             f = xbmcvfs.File('special://profile/addon_data/script.tvguide.fullscreen/catchup_channel.list','wb')
         first_cmd = None
@@ -2477,6 +2479,7 @@ class TVGuide(xbmcgui.WindowXML):
                 listitem = xbmcgui.ListItem (program.title, thumbnailImage=program.imageSmall)
                 listitem.setInfo('video', {'Title': program.title})
                 playlist.add(url=cmd, listitem=listitem)
+                f.write('#EXTINF:-1,%s\n%s\n' % (program.title.encode("utf8"),cmd.encode("utf8")))
             else:
                 f.write("%s\n" % name.encode('utf-8', 'replace'))
                 cmd = "RunPlugin(%s)" % cmd
@@ -2493,7 +2496,9 @@ class TVGuide(xbmcgui.WindowXML):
             self.currentChannel = channel
             self.currentProgram = self.database.getCurrentProgram(self.currentChannel)
         if ADDON.getSetting('catchup.playlist') == 'true':
-            self.player.play(playlist)
+            f.close()
+            #self.player.play(playlist)
+            self.player.play('special://profile/addon_data/script.tvguide.fullscreen/catchup_playlist.m3u')
         else:
             f.close()
             xbmc.executebuiltin(first_cmd)
