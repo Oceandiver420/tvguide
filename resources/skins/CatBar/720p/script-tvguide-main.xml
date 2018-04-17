@@ -13,6 +13,14 @@
             <posy>-10000</posy>
             <width>1</width>
             <height>1</height>
+            <texture>tvgf-timebar.png</texture>
+        </control>
+        <control type="image">
+            <description>workaround for texture not being loaded</description>
+            <posx>-10000</posx>
+            <posy>-10000</posy>
+            <width>1</width>
+            <height>1</height>
             <texture>tvg-program-focus.png</texture>
         </control>
         <control type="image">
@@ -228,7 +236,7 @@
                 <width>1280</width>
                 <height>450</height>
                 <texture>black-back.png</texture>
-                <visible>!Control.IsVisible(4200)</visible>
+                <visible>false</visible>
                 <aspectratio>scale</aspectratio>
                 <align>center</align>
                 <aligny>center</aligny>
@@ -1383,6 +1391,46 @@
 
                 <visible>true</visible>
             </control>
+            <control type="label" id="77021">
+                <description>Current Program time and day</description>
+                <left>960</left>
+                <posy>1</posy>
+                <width>300</width>
+                <height>38</height>
+                <textcolor>grey</textcolor>
+                <font>font13</font>
+                <align>right</align>
+                <aligny>center</aligny>
+                <label>Program Time</label>
+                <visible>false</visible>
+            </control>
+            <control type="label" id="7029">
+                <description>Current Program Duration</description>
+                <left>1060</left>
+                <posy>101</posy>
+                <width>200</width>
+                <height>40</height>
+                <align>right</align>
+                <aligny></aligny>
+                <textcolor>grey</textcolor>
+                <font>font13</font>
+                <label>Duration</label>
+                <visible>false</visible>
+            </control>
+            <control type="label" id="7030">
+                <description>Current Program Progress Info</description>
+                <left>1030</left>
+                <posy>134</posy>
+                <width>230</width>
+                <height>40</height>
+                <align>right</align>
+                <aligny></aligny>
+                <textcolor>grey</textcolor>
+                <font>font13</font>
+                <scroll>true</scroll>
+                <label fallback="[B]... minutes remaining[/B]"></label>
+                <visible>false</visible>
+            </control>
             <control type="progress" id="7026">
                 <posx>372</posx>
                 <posy>508</posy>
@@ -1534,6 +1582,34 @@
                 <aligny>top</aligny>
                 <aspectratio>keep</aspectratio>
                 <visible>!Control.IsVisible(5000)+Control.IsVisible(5002)</visible>
+            </control>
+
+            <control type="image" id="44025">
+                <description>Addon Logo</description>
+                <posx>0</posx>
+                <posy>55r</posy>
+                <width>50</width>
+                <height>50</height>
+                <aspectratio>keep</aspectratio>
+                <align>right</align>
+                <texture>-</texture>
+                <visible>true</visible>
+            </control>
+
+            <control type="label" id="44026">
+                <description>Addon Name</description>
+                <posx>55</posx>
+                <posy>30r</posy>
+                <width>200</width>
+                <height>20</height>
+                <align>left</align>
+                <aligny>top</aligny>
+                <font>font13_title</font>
+                <textcolor>white</textcolor>
+                <shadowcolor>black</shadowcolor>
+                <label></label>
+                <align>left</align>
+                <scroll>true</scroll>
             </control>
 
             <control type="label" id="4300">

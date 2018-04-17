@@ -155,6 +155,7 @@ def remove_formatting(label):
     label = re.sub(r"\[/?COLOR.*?\]",'',label)
     return label
 
+
 class Point(object):
     def __init__(self):
         self.x = self.y = 0
@@ -191,6 +192,7 @@ class TVGuide(xbmcgui.WindowXML):
     C_MAIN_CURRENT_CATEGORY = 7028
     C_MAIN_DURATION = 7029
     C_MAIN_PROGRESS_INFO = 7030
+    C_MAIN_SUBTITLE = 7031
     C_MAIN_TIMEBAR = 4100
     C_MAIN_LOADING = 4200
     C_MAIN_LOADING_PROGRESS = 4201
@@ -228,6 +230,7 @@ class TVGuide(xbmcgui.WindowXML):
     C_MAIN_MOUSE_REMIND = 4322
     C_MAIN_MOUSE_HELP_CONTROL = 4323
     C_MAIN_MOUSE_HELP_BUTTON = 4324
+    C_MAIN_MOUSE_VOD = 4325
     C_MAIN_BACKGROUND = 4600
     C_MAIN_HEADER = 4601
     C_MAIN_FOOTER = 4602
@@ -314,6 +317,8 @@ class TVGuide(xbmcgui.WindowXML):
     C_NEXT_UP_NEXT_TIME = 9009
     C_NEXT_UP_NEXT_CHANNEL_IMAGE = 9010
     C_MAIN_UP_NEXT_TIME_REMAINING = 9012
+    C_MAIN_ADDON_LOGO = 44025
+    C_MAIN_ADDON_LABEL = 44026
 
     def __new__(cls):
         return super(TVGuide, cls).__new__(cls, 'script-tvguide-main.xml', SKIN_PATH, SKIN)
@@ -342,6 +347,8 @@ class TVGuide(xbmcgui.WindowXML):
         self.quickEpgView = EPGView()
         self.quickChannelIdx = 0
         self.quickFocusPoint = Point()
+        self.timebar = None
+        self.quicktimebar = None
 
         self.player = xbmc.Player()
         self.database = None
@@ -350,7 +357,7 @@ class TVGuide(xbmcgui.WindowXML):
 
         self.mode = MODE_EPG
         self.channel_number_input = False
-        self.channel_number = ""
+        self.channel_number = ADDON.getSetting('channel.arg')
         self.currentChannel = None
         s = ADDON.getSetting('last.channel')
         if s:
@@ -363,6 +370,7 @@ class TVGuide(xbmcgui.WindowXML):
         self.focusedProgram = None
         self.quickEpgShowInfo = False
         self.playing_catchup_channel = False
+        self.current_channel_id = None
 
         self.vpnswitch = False
         self.vpndefault = False
@@ -471,7 +479,7 @@ class TVGuide(xbmcgui.WindowXML):
                 for (name,stream) in stream_urls:
                     write_str = "%s=%s\n" % (name,stream)
                     f.write(write_str.encode("utf8"))
-                f.close()
+            f.close()
 
             if self.database:
                 self.database.close(super(TVGuide, self).close)
@@ -531,6 +539,13 @@ class TVGuide(xbmcgui.WindowXML):
             self.quickEpgView.cellHeight = int(control.getHeight() / float(3))
 
         if self.database:
+            '''
+            channelList = self.database.getChannelList(onlyVisible=True,all=False)
+            for i in range(len(channelList)):
+                if self.channel_number == channelList[i].id:
+                     self.channelIdx = i
+                     break
+            '''
             self.onRedrawEPG(self.channelIdx, self.viewStartDate)
         else:
             try:
@@ -557,6 +572,57 @@ class TVGuide(xbmcgui.WindowXML):
 
         self.setControlVisible(self.C_MAIN_IMAGE,True)
 
+
+    def play_catchup(self, program):
+        file_name = 'special://profile/addon_data/script.tvguide.fullscreen/catchup.ini'
+        f = xbmcvfs.File(file_name,"rb")
+        data = f.read()
+        f.close()
+        name_sub = re.findall('(.*?)=(.*)',data)
+        name_sub = sorted(name_sub, key=lambda x: x[0].lower())
+        name_sub = [list(i) for i in name_sub]
+        names = [i[0] for i in name_sub]
+        d = xbmcgui.Dialog()
+        result = d.select(program.title,["Play"] + names)
+        if result == 0:
+            self.playOrChoose(program)
+        elif result >= 1:
+            url = name_sub[result-1][1]
+            id = program.channel.id
+            name = program.title
+            duration = program.endDate - program.startDate
+            minutes = duration.seconds // 60
+            #plugin://plugin.video.XXX/play_archive/%I/%Y-%m-%d:%H-%M/%T/%D
+            startDate = program.startDate
+            year = ""
+            match = re.search('(.*?) \(([0-9]{4})\)',program.title)
+            if match:
+                name = match.group(1)
+                year = match.group(2)
+            url = url.replace("%Y",str(startDate.year)) #TODO tv show year
+            url = url.replace("%m",str(startDate.month))
+            url = url.replace("%d",str(startDate.day))
+            url = url.replace("%H",str(startDate.hour))
+            url = url.replace("%M",str(startDate.minute))
+            url = url.replace("%I",id)
+            url = url.replace("%T",urllib.quote_plus(name.encode("utf8")))
+            url = url.replace("%W",urllib.quote_plus(name.encode("utf8")))
+            url = url.replace("%S",str(program.season))
+            url = url.replace("%E",str(program.episode))
+            url = url.replace("%D",str(minutes))
+            url = url.replace("%y",str(year))
+            if "%B" in url:
+                imdb = self.getIMDBId(name,year)
+                if imdb:
+                    url = url.replace("%B",imdb)
+            if "%V" in url:
+                tvdb = self.getTVDBId(name)
+                if tvdb:
+                    url = url.replace("%V",tvdb)
+            url = url.replace("%I",id)
+            xbmc.Player().play(item=url)
+
+
     def playShortcut(self):
         self.channel_number_input = False
         self.viewStartDate = datetime.datetime.today()
@@ -566,6 +632,11 @@ class TVGuide(xbmcgui.WindowXML):
         if ADDON.getSetting('channel.shortcut') == '2':
             for i in range(len(channelList)):
                 if self.channel_number == channelList[i].id:
+                     self.channelIdx = i
+                     break
+        elif ADDON.getSetting('channel.shortcut') == '3':
+             for i in range(len(channelList)):
+                if int(self.channel_number) == channelList[i].weight:
                      self.channelIdx = i
                      break
         else:
@@ -846,7 +917,21 @@ class TVGuide(xbmcgui.WindowXML):
         elif action.getId() in COMMAND_ACTIONS["RIGHT"]:
             self._hideLastPlayed()
 
-    def ChooseStreamAddon(self, result):
+    def ChooseStreamAddon(self, result, channel):
+        name = ''
+        icon = ''
+        url = self.database.getStreamUrl(channel)
+        if url:
+            if url.startswith('plugin://'):
+                match = re.search('plugin://(.*?)/.*',url)
+                if match:
+                    id = match.group(1)
+                    addon = xbmcaddon.Addon(id)
+                    name = addon.getAddonInfo('name')
+                    icon = addon.getAddonInfo('icon')
+            else:
+                name = "url"
+                icon = xbmcaddon.Addon('script.tvguide.fullscreen').getAddonInfo('icon')
         stream = ""
         title = ""
         if ADDON.getSetting('stream.addon.list') == 'true':
@@ -861,7 +946,7 @@ class TVGuide(xbmcgui.WindowXML):
                 stream = result[which][2]
                 title = result[which][1]
         else:
-            d = ChooseStreamAddonDialog(result)
+            d = ChooseStreamAddonDialog(result,name,icon)
             d.doModal()
             if d.stream is not None:
                 stream = d.stream
@@ -978,7 +1063,7 @@ class TVGuide(xbmcgui.WindowXML):
                     if program.notificationScheduled:
                         self.notification.removeNotification(program)
                     else:
-                        times = ["once","always"]
+                        times = ["once","always","new"]
                         when = d.select("%s When" % schedulers[what], times)
                         if when > -1:
                             self.notification.addNotification(program, when)
@@ -986,7 +1071,7 @@ class TVGuide(xbmcgui.WindowXML):
                     if program.autoplayScheduled:
                         self.autoplay.removeAutoplay(program)
                     else:
-                        times = ["once","always"]
+                        times = ["once","always","new"]
                         when = d.select("%s When" % schedulers[what], times)
                         if when > -1:
                             self.autoplay.addAutoplay(program, when)
@@ -994,7 +1079,7 @@ class TVGuide(xbmcgui.WindowXML):
                     if program.autoplaywithScheduled:
                         self.autoplaywith.removeAutoplaywith(program)
                     else:
-                        times = ["once","always"]
+                        times = ["once","always","new"]
                         when = d.select("%s When" % schedulers[what], times)
                         if when > -1:
                             self.autoplaywith.addAutoplaywith(program, when)
@@ -1016,10 +1101,14 @@ class TVGuide(xbmcgui.WindowXML):
                     self.playChannel(program.channel, program)
                 else:
                     # multiple matches, let user decide
-                    title,stream = self.ChooseStreamAddon(result)
+                    title,stream = self.ChooseStreamAddon(result,program.channel)
                     if stream:
                         self.database.setCustomStreamUrl(program.channel, stream)
                         self.playChannel(program.channel, program)
+        elif action.getId() in COMMAND_ACTIONS["CATCHUP"]:
+            program = self._getProgramFromControl(controlInFocus)
+            if program:
+                self.play_catchup(program)
         elif action.getId() in COMMAND_ACTIONS["EXTENDED_INFO"]:
             program = self._getProgramFromControl(controlInFocus)
             title = program.title
@@ -1169,7 +1258,8 @@ class TVGuide(xbmcgui.WindowXML):
             self._left(currentFocus)
         elif action.getId() in COMMAND_ACTIONS["RIGHT"] and self.getFocusId() not in [self.C_MAIN_ACTIONS,self.C_MAIN_CATEGORY,self.C_MAIN_PROGRAM_CATEGORIES]:
             self._right(currentFocus)
-
+        elif action.getId() in COMMAND_ACTIONS["VOD"]:
+            self.showVODTV()
         else:
             xbmc.log('[script.tvguide.fullscreen] Unhandled ActionId: ' + str(action.getId()), xbmc.LOGDEBUG)
 
@@ -1324,6 +1414,9 @@ class TVGuide(xbmcgui.WindowXML):
             elif favourites == 'Favourites':
                 xbmc.executebuiltin("ActivateWindow(10134)")
             return
+        elif controlId in [self.C_MAIN_MOUSE_VOD]:
+            self.showVODTV()
+            return
         elif controlId in [self.C_MAIN_MOUSE_MINE1]:
             command = ADDON.getSetting('mine1')
             xbmc.executebuiltin(command)
@@ -1474,18 +1567,25 @@ class TVGuide(xbmcgui.WindowXML):
         if ADDON.getSetting('play.menu') == 'true':
             self._showContextMenu(program)
         else:
-            self.playOrChoose(program)
+            now = datetime.datetime.now()
+            start = program.startDate
+            end = program.endDate
+            ask = ADDON.getSetting('catchup.dialog')
+            if start and end and ((ask == "3") or (ask=="2" and end < now) or (ask=="1" and start < now)):
+                self.play_catchup(program)
+            else:
+                self.playOrChoose(program)
 
 
     def playOrChoose(self,program):
         if not program.channel.id:
             return
-        if self.player.isPlaying() and self.currentChannel and (program.channel.id == self.currentChannel.id) and (ADDON.getSetting('play.alt.choose') == 'false'):
+        if self.player.isPlaying() and self.currentChannel and (program.channel.id == self.currentChannel.id) and ((ADDON.getSetting('play.always.choose') == "false") or (ADDON.getSetting('play.alt.choose') == 'false')):
                 self._hideEpg()
                 self._hideQuickEpg()
                 return
 
-        if not self.playChannel(program.channel, program):
+        if (ADDON.getSetting('play.always.choose') == "true") or not self.playChannel(program.channel, program):
             result = self.streamingService.detectStream(program.channel)
             if not result:
                 # could not detect stream, show stream setup
@@ -1500,10 +1600,17 @@ class TVGuide(xbmcgui.WindowXML):
                 self.playChannel(program.channel, program)
             else:
                 # multiple matches, let user decide
-                title,stream = self.ChooseStreamAddon(result)
+                title,stream = self.ChooseStreamAddon(result, program.channel)
                 if stream:
                     self.database.setCustomStreamUrl(program.channel, stream)
                     self.playChannel(program.channel, program)
+
+    def showVODTV(self):
+        d = VODTVDialog()
+        d.doModal()
+        index = d.index
+        if index > -1:
+            self._showContextMenu(programList[index])
 
     def showListing(self, channel):
         programList = self.database.getChannelListing(channel)
@@ -1521,7 +1628,15 @@ class TVGuide(xbmcgui.WindowXML):
                 self._showContextMenu(programList[index])
         else:
             if index > -1:
-                self.playOrChoose(programList[index])
+                program = programList[index]
+                now = datetime.datetime.now()
+                start = program.startDate
+                end = program.endDate
+                ask = ADDON.getSetting('catchup.dialog')
+                if (ask == "3") or (ask=="2" and end < now) or (ask=="1" and start < now):
+                    self.play_catchup(program)
+                else:
+                    self.playOrChoose(program)
 
     def showNow(self):
         programList = self.database.getNowList()
@@ -1539,7 +1654,15 @@ class TVGuide(xbmcgui.WindowXML):
                 self._showContextMenu(programList[index])
         else:
             if index > -1:
-                self.playOrChoose(programList[index])
+                program = programList[index]
+                now = datetime.datetime.now()
+                start = program.startDate
+                end = program.endDate
+                ask = ADDON.getSetting('catchup.dialog')
+                if (ask == "3") or (ask=="2" and end < now) or (ask=="1" and start < now):
+                    self.play_catchup(program)
+                else:
+                    self.playOrChoose(program)
 
     def showNext(self):
         programList = self.database.getNextList()
@@ -1557,7 +1680,15 @@ class TVGuide(xbmcgui.WindowXML):
                 self._showContextMenu(programList[index])
         else:
             if index > -1:
-                self.playOrChoose(programList[index])
+                program = programList[index]
+                now = datetime.datetime.now()
+                start = program.startDate
+                end = program.endDate
+                ask = ADDON.getSetting('catchup.dialog')
+                if (ask == "3") or (ask=="2" and end < now) or (ask=="1" and start < now):
+                    self.play_catchup(program)
+                else:
+                    self.playOrChoose(program)
 
 
     def programSearchSelect(self):
@@ -1631,7 +1762,15 @@ class TVGuide(xbmcgui.WindowXML):
                 self._showContextMenu(programList[index])
         else:
             if index > -1:
-                self.playOrChoose(programList[index])
+                program = programList[index]
+                now = datetime.datetime.now()
+                start = program.startDate
+                end = program.endDate
+                ask = ADDON.getSetting('catchup.dialog')
+                if (ask == "3") or (ask=="2" and end < now) or (ask=="1" and start < now):
+                    self.play_catchup(program)
+                else:
+                    self.playOrChoose(program)
 
 
     def descriptionSearch(self):
@@ -1681,7 +1820,15 @@ class TVGuide(xbmcgui.WindowXML):
                 self._showContextMenu(programList[index])
         else:
             if index > -1:
-                self.playOrChoose(programList[index])
+                program = programList[index]
+                now = datetime.datetime.now()
+                start = program.startDate
+                end = program.endDate
+                ask = ADDON.getSetting('catchup.dialog')
+                if (ask == "3") or (ask=="2" and end < now) or (ask=="1" and start < now):
+                    self.play_catchup(program)
+                else:
+                    self.playOrChoose(program)
 
     def categorySearch(self):
         d = xbmcgui.Dialog()
@@ -1714,7 +1861,15 @@ class TVGuide(xbmcgui.WindowXML):
                 self._showContextMenu(programList[index])
         else:
             if index > -1:
-                self.playOrChoose(programList[index])
+                program = programList[index]
+                now = datetime.datetime.now()
+                start = program.startDate
+                end = program.endDate
+                ask = ADDON.getSetting('catchup.dialog')
+                if (ask == "3") or (ask=="2" and end < now) or (ask=="1" and start < now):
+                    self.play_catchup(program)
+                else:
+                    self.playOrChoose(program)
 
     def channelSearch(self):
         d = xbmcgui.Dialog()
@@ -1736,7 +1891,15 @@ class TVGuide(xbmcgui.WindowXML):
                 self._showContextMenu(programList[index])
         else:
             if index > -1:
-                self.playOrChoose(programList[index])
+                program = programList[index]
+                now = datetime.datetime.now()
+                start = program.startDate
+                end = program.endDate
+                ask = ADDON.getSetting('catchup.dialog')
+                if (ask == "3") or (ask=="2" and end < now) or (ask=="1" and start < now):
+                    self.play_catchup(program)
+                else:
+                    self.playOrChoose(program)
 
     def showReminders(self):
         programList = self.database.getNotifications()
@@ -1748,7 +1911,7 @@ class TVGuide(xbmcgui.WindowXML):
             self._showContextMenu(programList[index])
 
     def showFullReminders(self):
-        programList = self.database.getFullNotifications()
+        programList = self.database.getFullNotifications(int(ADDON.getSetting('listing.days')))
         title = "Reminders"
         d = ProgramListDialog(title,programList, ADDON.getSetting('listing.sort.time') == 'true')
         d.doModal()
@@ -1773,7 +1936,7 @@ class TVGuide(xbmcgui.WindowXML):
             self._showContextMenu(program)
 
     def showFullAutoplays(self):
-        programList = self.database.getFullAutoplays()
+        programList = self.database.getFullAutoplays(int(ADDON.getSetting('listing.days')))
         title = "AutoPlays"
         d = ProgramListDialog(title, programList, ADDON.getSetting('listing.sort.time') == 'true')
         d.doModal()
@@ -1798,7 +1961,7 @@ class TVGuide(xbmcgui.WindowXML):
             self._showContextMenu(program)
 
     def showFullAutoplaywiths(self):
-        programList = self.database.getFullAutoplaywiths()
+        programList = self.database.getFullAutoplaywiths(int(ADDON.getSetting('listing.days')))
         title = "AutoPlayWiths"
         d = ProgramListDialog(title, programList, ADDON.getSetting('listing.sort.time') == 'true')
         d.doModal()
@@ -1828,7 +1991,7 @@ class TVGuide(xbmcgui.WindowXML):
                 self.notification.removeNotification(program)
             else:
                 d = xbmcgui.Dialog()
-                play_type = d.select("Notification play_type", ["once","always"]) #TODO ,"same time","same day"
+                play_type = d.select("Notification play_type", ["once","always","new"]) #TODO ,"same time","same day"
                 if play_type > -1:
                     self.notification.addNotification(program, play_type)
             if self.mode == MODE_EPG or ADDON.getSetting('redraw.epg') == 'true':
@@ -1839,7 +2002,7 @@ class TVGuide(xbmcgui.WindowXML):
                 self.autoplay.removeAutoplay(program)
             else:
                 d = xbmcgui.Dialog()
-                play_type = d.select("AutoPlay play_type", ["once","always"]) #TODO ,"same time","same day"
+                play_type = d.select("AutoPlay play_type", ["once","always","new"]) #TODO ,"same time","same day"
                 if play_type > -1:
                     self.autoplay.addAutoplay(program, play_type)
             if self.mode == MODE_EPG or ADDON.getSetting('redraw.epg') == 'true':
@@ -1850,7 +2013,7 @@ class TVGuide(xbmcgui.WindowXML):
                 self.autoplaywith.removeAutoplaywith(program)
             else:
                 d = xbmcgui.Dialog()
-                play_type = d.select("AutoPlayWith play_type", ["once","always"]) #TODO ,"same time","same day"
+                play_type = d.select("AutoPlayWith play_type", ["once","always","new"]) #TODO ,"same time","same day"
                 if play_type > -1:
                     self.autoplaywith.addAutoplaywith(program, play_type)
             if self.mode == MODE_EPG or ADDON.getSetting('redraw.epg') == 'true':
@@ -1876,6 +2039,9 @@ class TVGuide(xbmcgui.WindowXML):
             elif list == 6:
                 self.showFullAutoplaywiths()
 
+        elif buttonClicked == PopupMenu.C_POPUP_VODTV:
+            self.showVODTV()
+
         elif buttonClicked == PopupMenu.C_POPUP_CATEGORY:
             if self.mode == MODE_EPG or ADDON.getSetting('redraw.epg') == 'true':
                 self.onRedrawEPG(self.channelIdx, self.viewStartDate)
@@ -1892,7 +2058,7 @@ class TVGuide(xbmcgui.WindowXML):
 
             else:
                 # multiple matches, let user decide
-                title,stream = self.ChooseStreamAddon(result)
+                title,stream = self.ChooseStreamAddon(result, program.channel)
                 if stream:
                     self.database.setCustomStreamUrl(program.channel, stream)
                     self.playChannel(program.channel, program)
@@ -1911,7 +2077,7 @@ class TVGuide(xbmcgui.WindowXML):
                 self.database.setCustomStreamUrl(program.channel, result)
             else:
                 # multiple matches, let user decide
-                title,stream = self.ChooseStreamAddon(result)
+                title,stream = self.ChooseStreamAddon(result, program.channel)
                 if stream:
                     self.database.setAltCustomStreamUrl(program.channel, title, stream)
 
@@ -2041,6 +2207,9 @@ class TVGuide(xbmcgui.WindowXML):
                         xbmc.executebuiltin('RunScript(script.extendedinfo,info=extendedtvinfo,name=%s)' % (program.title))
             else:
                 xbmcgui.Dialog().notification("TV Guide Fullscreen", "Couldn't find: %s" % title)
+        elif buttonClicked == PopupMenu.C_POPUP_CATCHUP_ADDON:
+            self.play_catchup(program)
+
 
     def _showCatMenu(self):
         #self._hideControl(self.C_MAIN_MOUSE_CONTROLS)
@@ -2115,6 +2284,20 @@ class TVGuide(xbmcgui.WindowXML):
             title = '[B]%s[/B]' % program.title
         if program.season and program.episode:
             title += " S%sE%s" % (program.season, program.episode)
+        subtitle = ''
+
+        if ADDON.getSetting('epg.subtitle') == 'true':
+            title = '[B]%s[/B]' % program.title
+            if program.sub_title:
+                subtitle = '%s' % (program.sub_title)
+            elif program.categories:
+                subtitle = '%s' % (program.categories)
+                subtitle = subtitle.replace(",",", ")
+            else:
+                subtitle = '%s' % (program.title)
+            if program.season and program.episode:
+                subtitle += " - s%se%s" % (program.season, program.episode)
+
         #if program.is_movie == "Movie":
         #    title += " [B](Movie)[/B]"
 
@@ -2138,6 +2321,7 @@ class TVGuide(xbmcgui.WindowXML):
 
         else:
             self.setControlLabel(self.C_MAIN_TITLE, title)
+            self.setControlLabel(self.C_MAIN_SUBTITLE, subtitle)
             if program.startDate or program.endDate:
                 self.setControlLabel(self.C_MAIN_TIME,
                                      '[B]%s - %s[/B]' % (self.formatTime(program.startDate), self.formatTime(program.endDate)))
@@ -2198,6 +2382,11 @@ class TVGuide(xbmcgui.WindowXML):
                 self.setControlVisible(self.C_MAIN_LOGO,True)
             else:
                 self.setControlVisible(self.C_MAIN_LOGO,False)
+
+            if program.channel and ADDON.getSetting('addon.logo') == "true":
+                self.current_channel_id = program.channel.id
+                threading.Thread(target=self.getAddonLogo,args=(program.channel,)).start()
+
 
             program_image = ''
             if ADDON.getSetting('program.image') == 'true':
@@ -2272,6 +2461,40 @@ class TVGuide(xbmcgui.WindowXML):
 
             #if not self.osdEnabled and self.player.isPlaying():
             #    self.player.stop()
+
+    def getAddonLogo(self,channel):
+        xbmc.sleep(50)
+        if channel.id != self.current_channel_id:
+            return
+        try:
+            url = self.database.getStreamUrl(channel)
+        except:
+            return
+        name = ""
+        icon = ""
+        if url:
+            if url.startswith('plugin://'):
+                match = re.search('plugin://(.*?)/.*',url)
+                if match:
+                    id = match.group(1)
+                    addon = xbmcaddon.Addon(id)
+                    name = addon.getAddonInfo('name')
+                    icon = addon.getAddonInfo('icon')
+            else:
+                name = "url"
+                icon = xbmcaddon.Addon('script.tvguide.fullscreen').getAddonInfo('icon')
+        try:
+            control = self.getControl(self.C_MAIN_ADDON_LABEL)
+            if control:
+                control.setLabel(name)
+        except:
+            pass
+        try:
+            control = self.getControl(self.C_MAIN_ADDON_LOGO)
+            if control:
+                control.setImage(icon)
+        except:
+            pass
 
     def getImage(self,program_title,title,year,season,episode,movie,load):
         img = ''
@@ -2438,6 +2661,23 @@ class TVGuide(xbmcgui.WindowXML):
         if load and tvdb_url and self.focusedProgram and (self.focusedProgram.title.encode("utf8") == title):
             self.setControlImage(self.C_MAIN_IMAGE, tvdb_url)
 
+
+    def getTVDBId(self, title):
+        orig_title = title
+        try: title = title.encode("utf8")
+        except: title = unicode(title)
+        url = "http://thetvdb.com/?string=%s&searchseriesid=&tab=listseries&function=Search" % urllib.quote_plus(title)
+        try:
+            html = requests.get(url).content
+        except:
+            return
+        match = re.search('<a href="/\?tab=series&amp;id=([0-9]*)',html)
+        if match:
+            id = match.group(1)
+            return id
+
+
+
     def getIMDBImage(self, title, year, load=True):
         orig_title = "%s (%s)" % (title,year)
         try: utf_title = orig_title.encode("utf8")
@@ -2486,6 +2726,23 @@ class TVGuide(xbmcgui.WindowXML):
             self.tvdb_urls[orig_title] = tvdb_url
         if load and tvdb_url and self.focusedProgram and (self.focusedProgram.title.encode("utf8") == utf_title):
             self.setControlImage(self.C_MAIN_IMAGE, tvdb_url)
+
+
+    def getIMDBId(self, title, year):
+        orig_title = "%s (%s)" % (title,year)
+        try: utf_title = orig_title.encode("utf8")
+        except: utf_title = unicode(utf_title)
+        headers = {'user-agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 9_1 like Mac OS X) AppleWebKit/601.1.46 (KHTML, like Gecko) Version/9.0 Mobile/13B143 Safari/601.1'}
+        url = "http://www.bing.com/search?q=site%%3Aimdb.com+%s" % urllib.quote_plus(utf_title)
+        try: html = requests.get(url).content
+        except: return
+
+        match = re.search('href="(http://www.imdb.com/title/(tt.*?)/)".*?<strong>(.*?)</strong>',html)
+        tvdb_url = ''
+        if match:
+            id = match.group(2)
+            return id
+
 
 
     def _left(self, currentFocus):
@@ -2681,9 +2938,16 @@ class TVGuide(xbmcgui.WindowXML):
         self.database.updateProgramList(None,programList,channel)
         self.onRedrawEPG(self.channelIdx, self.viewStartDate)
 
+
     def catchup(self,channel):
+        if ADDON.getSetting('catchup.type') == "0":
+            self.catchup_meta(channel)
+        else:
+            self.catchup_direct(channel)
+
+    def catchup_meta(self,channel):
         self.playing_catchup_channel = True
-        programList = self.database.getChannelListing(channel)
+        programList = self.database.getCatchupListing(channel)
         if not programList:
             return
         now = datetime.datetime.now()
@@ -2739,16 +3003,63 @@ class TVGuide(xbmcgui.WindowXML):
             self.currentProgram = self.database.getCurrentProgram(self.currentChannel)
         xbmc.executebuiltin(first_cmd)
 
+
+    def catchup_direct(self,channel):
+        direct_addon = ADDON.getSetting('catchup.direct')
+        self.playing_catchup_channel = True
+        programList = self.database.getCatchupListing(channel)
+        if not programList:
+            return
+        now = datetime.datetime.now()
+        offset = now - programList[0].startDate
+        f = xbmcvfs.File('special://profile/addon_data/script.tvguide.fullscreen/catchup_channel.strm','wb')
+        f.write("#EXTM3U\n")
+        newProgramList = []
+        for program in programList:
+            program.startDate += offset
+            program.endDate += offset
+            t = program.startDate - now
+            timeToAutoplay = ((t.days * 86400) + t.seconds) / 60
+
+            title = program.title
+
+            tvtitle = urllib.quote_plus(title.encode("utf8"))
+            label = title
+            name = ""
+            if program.is_movie:
+                if hasattr(program, 'year'):
+                    year = program.year
+                    label = "%s (%s)" % (title,year)
+                    imdb = self.getIMDBId(title,year)
+                    name = "plugin://plugin.video.%s/?action=play&imdb=%s&year=%s&title=%s" % (direct_addon,imdb,year,tvtitle)
+            if program.season:
+                label = "%s S%sE%s" % (title,program.season,program.episode)
+                tvdb = self.getTVDBId(title)
+                name = "plugin://plugin.video.%s/?action=play&tvshowtitle=%s&tvdb=%s&season=%s&episode=%s&year=0" % (direct_addon,tvtitle,tvdb,program.season,program.episode)
+            if name:
+                f.write("%s\n" % label.encode('utf-8', 'replace'))
+                f.write("%s\n" % name.encode('utf-8', 'replace'))
+                newProgramList.append(program)
+        f.close()
+        catchup = ADDON.getSetting('catchup.direct')
+        channel = utils.Channel("catchup", catchup, '', "special://home/addons/plugin.video.%s/icon.png" % catchup.lower(), "catchup", True)
+        self.database.updateProgramList(None,newProgramList,channel)
+        self.onRedrawEPG(self.channelIdx, self.viewStartDate)
+        if ADDON.getSetting('catchup.channel') == 'true':
+            self.currentChannel = channel
+            self.currentProgram = self.database.getCurrentProgram(self.currentChannel)
+        xbmc.executebuiltin("PlayMedia(special://profile/addon_data/script.tvguide.fullscreen/catchup_channel.strm)")
+
     def playChannel(self, channel, program = None):
         self.playing_catchup_channel = False
         if ADDON.getSetting('epg.video.pip') == 'true':
             self.setControlVisible(self.C_MAIN_IMAGE,True)
         url = self.database.getStreamUrl(channel)
         alt_url = self.database.getAltStreamUrl(channel)
-        self.alt_urls = []
-        if url and alt_url:
+        self.alt_urls = [x[0] for x in alt_url]
+        if url and alt_url and (ADDON.getSetting('play.alt.fallback') == 'false'):
             d = xbmcgui.Dialog()
-            alt_urls = [url] + [x[0] for x in alt_url]
+            alt_urls = [url] + self.alt_urls
             self.alt_urls = alt_urls
             names = []
             alt_url = [(url,channel.title)] + alt_url
@@ -2796,6 +3107,7 @@ class TVGuide(xbmcgui.WindowXML):
                     xbmc.executebuiltin('XBMC.RunPlugin(%s)' % url[1:])
                 elif url[0:14] == "ActivateWindow":
                     xbmc.executebuiltin(url)
+                    return True
                 elif url[0:9] == 'plugin://':
                     if self.vpnswitch: self.api.filterAndSwitch(url, 0, self.vpndefault, True)
                     if self.alternativePlayback:
@@ -2804,6 +3116,13 @@ class TVGuide(xbmcgui.WindowXML):
                         self.player.play(item=url, windowed=self.osdEnabled)
                 else:
                     if self.vpndefault: self.api.defaultVPN(True)
+                    if ADDON.getSetting('m3u.read') == 'true':
+                        if url.startswith('http') and url.split('?')[0].split('.')[-1].startswith('m3u'):
+                            m3u = xbmcvfs.File(url,'rb').read()
+                            match = re.findall('EXT-X-STREAM-INF.*?BANDWIDTH=(.*?),.*?\n(http.*?)\n',m3u,re.M)
+                            streams = [[m[0],m[1]] for m in sorted(match, key=lambda x: int(x[0]), reverse=True)]
+                            if streams:
+                                url = streams[0][1]
                     self.player.play(item=url, windowed=self.osdEnabled)
 
             self.tryingToPlay = True
@@ -2886,6 +3205,7 @@ class TVGuide(xbmcgui.WindowXML):
         if ADDON.getSetting('play.alt.continue') == 'true':
             if self.alt_urls:
                 url = self.alt_urls.pop(0)
+                #dialog.notification('Trying', url, xbmcgui.NOTIFICATION_ERROR, 5000, sound=True)
                 #TODO meta
                 if url.startswith('@'):
                     if self.vpnswitch: self.api.filterAndSwitch(url[1:], 0, self.vpndefault, True)
@@ -2900,6 +3220,13 @@ class TVGuide(xbmcgui.WindowXML):
                         self.player.play(item=url, windowed=self.osdEnabled)
                 else:
                     if self.vpndefault: self.api.defaultVPN(True)
+                    if ADDON.getSetting('m3u.read') == 'true':
+                        if url.startswith('http') and url.split('?')[0].split('.')[-1].startswith('m3u'):
+                            m3u = xbmcvfs.File(url,'rb').read()
+                            match = re.findall('EXT-X-STREAM-INF.*?BANDWIDTH=(.*?),.*?\n(http.*?)\n',m3u,re.M)
+                            streams = [[m[0],m[1]] for m in sorted(match, key=lambda x: int(x[0]), reverse=True)]
+                            if streams:
+                                url = streams[0][1]
                     self.player.play(item=url, windowed=self.osdEnabled)
                 self.tryingToPlay = True
                 if ADDON.getSetting('play.minimized') == 'false':
@@ -3143,6 +3470,7 @@ class TVGuide(xbmcgui.WindowXML):
             debug('onRedrawEPG - already redrawing')
             return  # ignore redraw request while redrawing
         debug('onRedrawEPG')
+        controlAndProgramList = []
 
         self._hideQuickEpg()
         self.redrawingEPG = True
@@ -3188,7 +3516,7 @@ class TVGuide(xbmcgui.WindowXML):
                 listControl.selectItem(self.action_index)
 
         # remove existing controls
-        self._clearEpg()
+        #self._clearEpg()
 
         if ADDON.getSetting('epg.video.pip') == 'true' and self.player.isPlaying():
             self.setControlVisible(self.C_MAIN_IMAGE,False)
@@ -3208,6 +3536,9 @@ class TVGuide(xbmcgui.WindowXML):
         else:
             self.setControlLabel(self.C_MAIN_DATE_LONG, self.formatDate(self.viewStartDate, False))
         #self.setControlLabel(self.C_MAIN_DATE_LONG, '{dt:%A} {dt.day} {dt:%B}'.format(dt=self.viewStartDate))
+        if ADDON.getSetting('date.custom') == 'true':
+            date_format = ADDON.getSetting('date.custom.format')
+            self.setControlLabel(self.C_MAIN_DATE_LONG, date_format.format(dt=self.viewStartDate))
         for col in range(1, 5):
             self.setControlLabel(4000 + col, self.formatTime(startTime))
             startTime += HALF_HOUR
@@ -3219,12 +3550,20 @@ class TVGuide(xbmcgui.WindowXML):
         # set channel logo or text
         showLogo = ADDON.getSetting('logos.enabled') == 'true'
         channel_index_format = "%%0%sd" % ADDON.getSetting('channel.index.digits')
+        altChannelColumnBG = "tvg-alt-channel-column.png"
+        channelColumnBGCheck = "%sresources/skins/%s/media/%s" % (SKIN_PATH,SKIN,altChannelColumnBG)
+        channelColumnBG = "tvg-program-nofocus.png"
+        if xbmcvfs.exists( channelColumnBGCheck ):
+            channelColumnBG = altChannelColumnBG
         for idx in range(0, CHANNELS_PER_PAGE):
             if idx >= len(channels):
                 self.setControlImage(4110 + idx, ' ')
                 self.setControlLabel(4010 + idx, ' ')
                 self.setControlLabel(4410 + idx, ' ')
-                self.setControlVisible(4210 + idx,True)
+                if ADDON.getSetting('dummy.channels') == 'true':
+                    self.setControlVisible(4210 + idx,True)
+                else:
+                    self.setControlVisible(4210 + idx,False)
             else:
                 self.setControlVisible(4210 + idx,True)
                 channel = channels[idx]
@@ -3233,6 +3572,8 @@ class TVGuide(xbmcgui.WindowXML):
                     self.setControlLabel(4410 + idx, channel_index_format % (self.channelIdx + idx + 1))
                 elif ADDON.getSetting('channel.shortcut') == '2':
                     self.setControlLabel(4410 + idx, channel.id)
+                elif ADDON.getSetting('channel.shortcut') == '3':
+                    self.setControlLabel(4410 + idx, channel_index_format % channel.weight)
                 else:
                     self.setControlLabel(4410 + idx, ' ')
                 if (channel.logo is not None and showLogo == True):
@@ -3251,13 +3592,13 @@ class TVGuide(xbmcgui.WindowXML):
                     if self.player.isPlaying() and (self.currentChannel == channels[idx]):
                         control.setImage("tvg-playing-nofocus.png")
                     else:
-                        control.setImage("tvg-program-nofocus.png")
+                        control.setImage(channelColumnBG)
                 except:
                     control.setImage("tvg-program-nofocus.png")
             control = self.getControl(4010 + idx)
             if control:
                 control.setHeight(self.epgView.cellHeight-2)
-                control.setWidth(166)
+                control.setWidth(156)
                 control.setPosition(12,top)
             control = self.getControl(4110 + idx)
             if control:
@@ -3268,7 +3609,7 @@ class TVGuide(xbmcgui.WindowXML):
             if control:
                 control.setWidth(176)
                 control.setHeight(self.epgView.cellHeight-2)
-                control.setPosition(2,top)
+                control.setPosition(5,top)
 
         name = remove_formatting(ADDON.getSetting('epg.nofocus.color'))
         color = colors.color_name[name]
@@ -3336,7 +3677,7 @@ class TVGuide(xbmcgui.WindowXML):
                     font=font
                 )
 
-                self.controlAndProgramList.append(ControlAndProgram(control, program))
+                controlAndProgramList.append(ControlAndProgram(control, program))
         noProgramsMessage = ADDON.getSetting('no.programs.message')
         for channel in channelsWithoutPrograms:
             idx = channels.index(channel)
@@ -3356,26 +3697,27 @@ class TVGuide(xbmcgui.WindowXML):
             )
 
             program = src.Program(channel, "", '', None, None, None, '')
-            self.controlAndProgramList.append(ControlAndProgram(control, program))
+            controlAndProgramList.append(ControlAndProgram(control, program))
 
-        for idx in range(len(channels), CHANNELS_PER_PAGE):
-            noFocusTexture = 'tvg-program-nofocus.png'
-            focusTexture = 'tvg-program-focus.png'
-            control = xbmcgui.ControlButton(
-                self.epgView.left,
-                self.epgView.top + self.epgView.cellHeight * idx,
-                (self.epgView.right - self.epgView.left) - 2,
-                self.epgView.cellHeight - 2,
-                "",
-                focusedColor=focusColor,
-                textColor=noFocusColor,
-                noFocusTexture=noFocusTexture,
-                focusTexture=focusTexture,
-                font=font
-            )
-            channel = utils.Channel("", "", '', "" , "", True)
-            program = src.Program(channel, "", '', None, None, None, '')
-            self.controlAndProgramList.append(ControlAndProgram(control, program))
+        if ADDON.getSetting('dummy.channels') == 'true':
+            for idx in range(len(channels), CHANNELS_PER_PAGE):
+                noFocusTexture = 'tvg-program-nofocus.png'
+                focusTexture = 'tvg-program-focus.png'
+                control = xbmcgui.ControlButton(
+                    self.epgView.left,
+                    self.epgView.top + self.epgView.cellHeight * idx,
+                    (self.epgView.right - self.epgView.left) - 2,
+                    self.epgView.cellHeight - 2,
+                    "",
+                    focusedColor=focusColor,
+                    textColor=noFocusColor,
+                    noFocusTexture=noFocusTexture,
+                    focusTexture=focusTexture,
+                    font=font
+                )
+                channel = utils.Channel("", "", '', "" , "", True)
+                program = src.Program(channel, "", '', None, None, None, '')
+                controlAndProgramList.append(ControlAndProgram(control, program))
 
         top = self.epgView.top + self.epgView.cellHeight * len(channels)
         height = 720 - top
@@ -3383,6 +3725,7 @@ class TVGuide(xbmcgui.WindowXML):
         if control:
             control.setPosition(0,top)
             control.setHeight(height)
+
 
         control = self.getControl(self.C_MAIN_TIMEBAR)
         if control:
@@ -3396,6 +3739,8 @@ class TVGuide(xbmcgui.WindowXML):
         if focusFunction is None:
             focusFunction = self._findControlAt
 
+        self._clearEpg()
+        self.controlAndProgramList = controlAndProgramList
         controls = [elem.control for elem in self.controlAndProgramList]
         try:
             self.addControls(controls)
@@ -3411,11 +3756,20 @@ class TVGuide(xbmcgui.WindowXML):
         if focusControl is None and len(self.controlAndProgramList) > 0:
             control = self.getControl(self.C_MAIN_EPG_VIEW_MARKER)
             if control:
-                left, top = control.getPosition()
+                left, ttop = control.getPosition()
                 self.focusPoint.x = left
-                self.focusPoint.y = top
+                self.focusPoint.y = ttop
                 focusControl = focusFunction(self.focusPoint)
                 self.setFocus(focusControl)
+
+        if self.timebar:
+            self.removeControl(self.timebar)
+        self.timebar = xbmcgui.ControlImage (0, 0, -2, 0, "tvgf-timebar.png")
+        self.timebar.setHeight(top - self.epgView.top - 2)
+        color = colors.color_name[remove_formatting(ADDON.getSetting('timebar.color'))]
+        self.timebar.setColorDiffuse(color)
+        self.addControl(self.timebar)
+        self.updateTimebar()
 
         self._hideControl(self.C_MAIN_LOADING)
         self.redrawingEPG = False
@@ -3429,7 +3783,6 @@ class TVGuide(xbmcgui.WindowXML):
         self.redrawingQuickEPG = True
         self.mode = MODE_QUICK_EPG
         self._showControl(self.C_QUICK_EPG)
-        self.updateQuickTimebar(scheduleTimer=False)
 
         # remove existing controls
         self._clearQuickEpg()
@@ -3609,12 +3962,25 @@ class TVGuide(xbmcgui.WindowXML):
         if focusControl is None and len(self.quickControlAndProgramList) > 0:
             self.setQuickFocus(self.quickControlAndProgramList[0].control)
 
+        if self.quicktimebar:
+            self.removeControl(self.quicktimebar)
+        self.quicktimebar = xbmcgui.ControlImage (0, 0, -2, 0, "tvgf-timebar.png")
+        self.quicktimebar.setHeight(self.quickEpgView.bottom - self.quickEpgView.top - 2)
+        color = colors.color_name[remove_formatting(ADDON.getSetting('timebar.color'))]
+        self.quicktimebar.setColorDiffuse(color)
+        self.addControl(self.quicktimebar)
+        self.updateQuickTimebar(scheduleTimer=False)
+
         self.redrawingQuickEPG = False
 
     def _clearEpg(self):
+        if self.timebar:
+            self.removeControl(self.timebar)
+            self.timebar = None
         controls = [elem.control for elem in self.controlAndProgramList]
         try:
             self.removeControls(controls)
+
         except RuntimeError:
             for elem in self.controlAndProgramList:
                 try:
@@ -3624,6 +3990,9 @@ class TVGuide(xbmcgui.WindowXML):
         del self.controlAndProgramList[:]
 
     def _clearQuickEpg(self):
+        if self.quicktimebar:
+            self.removeControl(self.quicktimebar)
+            self.quicktimebar = None
         controls = [elem.control for elem in self.quickControlAndProgramList]
         try:
             self.removeControls(controls)
@@ -3656,7 +4025,6 @@ class TVGuide(xbmcgui.WindowXML):
             self.notification = Notification(self.database, ADDON.getAddonInfo('path'))
             self.autoplay = Autoplay(self.database, ADDON.getAddonInfo('path'))
             self.autoplaywith = Autoplaywith(self.database, ADDON.getAddonInfo('path'))
-            self.onRedrawEPG(0, self.viewStartDate)
             self.database.exportChannelList()
             self.database.exportChannelIdList()
             self.notification.scheduleNotifications()
@@ -3664,6 +4032,12 @@ class TVGuide(xbmcgui.WindowXML):
             self.autoplaywith.scheduleAutoplaywiths()
             self.loadChannelMappings()
             self.clear_catchup()
+            channelList = self.database.getChannelList(onlyVisible=True,all=False)
+            for i in range(len(channelList)):
+                if self.channel_number == channelList[i].id:
+                     self.channelIdx = i
+                     break
+            self.onRedrawEPG(self.channelIdx, self.viewStartDate)
 
     def saveActions(self):
         file_name = 'special://profile/addon_data/script.tvguide.fullscreen/actions.json'
@@ -3692,25 +4066,90 @@ class TVGuide(xbmcgui.WindowXML):
             data = xbmcvfs.File(customFile,'rb').read()
             if data:
                 lines = data.splitlines()
-                stream_urls = [line.split("=",1) for line in lines]
-                f.close()
+                stream_urls = [line.decode("utf8").split("=",1) for line in lines]
                 if stream_urls:
                     self.database.setCustomStreamUrls(stream_urls)
 
         if ADDON.getSetting('mapping.m3u.enabled') == 'true':
             if ADDON.getSetting('mapping.m3u.type') == '0':
                 customFile = ADDON.getSetting('mapping.m3u.file')
+                data = xbmcvfs.File(customFile,'rb').read()
             else:
                 customFile = ADDON.getSetting('mapping.m3u.url')
-            data = xbmcvfs.File(customFile,'rb').read()
+                data = requests.get(customFile).content
             if data:
-                matches = re.findall(r'#EXTINF:.*?,(.*?)\n([^#]*?)\n',data,flags=(re.MULTILINE))
-                stream_urls = []
-                for name,url in matches:
-                    if name and url:
-                        stream_urls.append((name.decode("utf8"),url))
-                if stream_urls:
-                    self.database.setCustomStreamUrls(stream_urls)
+                enckey = ADDON.getSetting('mapping.m3u.key')
+                encode = ADDON.getSetting('mapping.m3u.encode') == "true"
+                import_m3u = True
+                if encode and enckey:
+                    import pyaes
+                    enckey=enckey.encode("ascii")
+                    missingbytes=16-len(enckey)
+                    enckey=enckey+(chr(0)*(missingbytes))
+                    encryptor = pyaes.new(enckey , pyaes.MODE_ECB, IV=None)
+                    ddata=encryptor.encrypt(data)
+                    ddata=base64.b64encode(ddata)
+                    f = xbmcvfs.File('special://profile/addon_data/script.tvguide.fullscreen/mapping.aes.m3u','wb')
+                    f.write(ddata)
+                    f.close()
+                    import_m3u = False
+                elif enckey:
+                    import pyaes
+                    enckey=enckey.encode("ascii")
+                    missingbytes=16-len(enckey)
+                    enckey=enckey+(chr(0)*(missingbytes))
+                    ddata=base64.b64decode(data)
+                    decryptor = pyaes.new(enckey , pyaes.MODE_ECB, IV=None)
+                    data=decryptor.decrypt(ddata).split('\0')[0]
+                if import_m3u:
+                    matches = re.findall(r'#EXTINF:(.*?),(.*?)\n([^#]*?)\n',data,flags=(re.MULTILINE))
+                    stream_urls = []
+                    for attributes,name,url in matches:
+                        match = re.search('tvg-id="(.*?)"',attributes,flags=(re.I))
+                        if match:
+                            name = match.group(1)
+                        if name and url:
+                            stream_urls.append((name.strip().decode("utf8"),url.strip()))
+                    if stream_urls:
+                        self.database.setCustomStreamUrls(stream_urls)
+
+        if ADDON.getSetting('alt.mapping.tsv.enabled') == 'true':
+            if ADDON.getSetting('alt.mapping.tsv.type') == '0':
+                customFile = ADDON.getSetting('alt.mapping.tsv.file')
+                data = xbmcvfs.File(customFile,'rb').read()
+            else:
+                customFile = ADDON.getSetting('alt.mapping.tsv.url')
+                data = requests.get(customFile).content
+            if data:
+                enckey = ADDON.getSetting('alt.mapping.tsv.key')
+                encode = ADDON.getSetting('alt.mapping.tsv.encode') == "true"
+                import_tsv = True
+                if encode and enckey:
+                    import pyaes
+                    enckey=enckey.encode("ascii")
+                    missingbytes=16-len(enckey)
+                    enckey=enckey+(chr(0)*(missingbytes))
+                    encryptor = pyaes.new(enckey , pyaes.MODE_ECB, IV=None)
+                    ddata=encryptor.encrypt(data)
+                    ddata=base64.b64encode(ddata)
+                    f = xbmcvfs.File('special://profile/addon_data/script.tvguide.fullscreen/alt.mapping.aes.tsv','wb')
+                    f.write(ddata)
+                    f.close()
+                    import_tsv = False
+                elif enckey:
+                    import pyaes
+                    enckey=enckey.encode("ascii")
+                    missingbytes=16-len(enckey)
+                    enckey=enckey+(chr(0)*(missingbytes))
+                    ddata=base64.b64decode(data)
+                    decryptor = pyaes.new(enckey , pyaes.MODE_ECB, IV=None)
+                    data=decryptor.decrypt(ddata).split('\0')[0]
+                if import_tsv:
+                    lines = data.splitlines()
+                    stream_urls = [line.decode("utf8").split("\t",2) for line in lines if '\t' in line]
+                    self.database.setAltCustomStreamUrls(stream_urls)
+
+
 
     def onSourceProgressUpdate(self, percentageComplete):
         control = self.getControl(self.C_MAIN_LOADING_PROGRESS)
@@ -4025,6 +4464,7 @@ class TVGuide(xbmcgui.WindowXML):
                 # exceptions.RuntimeError: Unknown exception thrown from the call "setVisible"
                 self.setControlVisible(self.C_MAIN_TIMEBAR,timeDelta.days == 0)
                 control.setPosition(self._secondsToXposition(timeDelta.seconds), y)
+                self.timebar.setPosition(self._secondsToXposition(timeDelta.seconds), y)
             except:
                 pass
 
@@ -4044,6 +4484,7 @@ class TVGuide(xbmcgui.WindowXML):
             except:
                 pass
             control.setPosition(self._secondsToXposition(timeDelta.seconds), y)
+            self.quicktimebar.setPosition(self._secondsToXposition(timeDelta.seconds), self.quickEpgView.top) #TODO use marker
 
         if scheduleTimer and not xbmc.abortRequested and not self.isClosing:
             threading.Timer(1, self.updateQuickTimebar).start()
@@ -4077,6 +4518,8 @@ class PopupMenu(xbmcgui.WindowXMLDialog):
     C_POPUP_EXTENDED = 4013
     C_POPUP_CHOOSE_ALT = 4014
     C_POPUP_CHOOSE_CLOSE = 4015 # deprecated?
+    C_POPUP_VODTV = 4016
+    C_POPUP_CATCHUP_ADDON = 4017
     C_POPUP_CHANNEL_LOGO = 4100
     C_POPUP_CHANNEL_TITLE = 4101
     C_POPUP_SETUP_CHANNEL_TITLE = 44101
@@ -4086,6 +4529,7 @@ class PopupMenu(xbmcgui.WindowXMLDialog):
     C_POPUP_PROGRESS_BAR = 4105
     C_POPUP_NEXT_PROGRAM_TITLE = 4106
     C_POPUP_NEXT_PROGRAM_DATE = 4107
+    C_POPUP_PROGRAM_SUBTITLE = 4108
     C_POPUP_ADDON_LOGO = 4025
     C_POPUP_ADDON_LABEL = 4026
     C_POPUP_LIBMOV = 80000
@@ -4151,6 +4595,10 @@ class PopupMenu(xbmcgui.WindowXMLDialog):
         channelLogoControl = self.getControl(self.C_POPUP_CHANNEL_LOGO)
         channelTitleControl = self.getControl(self.C_POPUP_CHANNEL_TITLE)
         programTitleControl = self.getControl(self.C_POPUP_PROGRAM_TITLE)
+        try:
+            programSubTitleControl = self.getControl(self.C_POPUP_PROGRAM_SUBTITLE)
+        except:
+            programSubTitleControl = None
         programPlayBeginningControl = self.getControl(self.C_POPUP_PLAY_BEGINNING)
         programSuperFavourites = self.getControl(self.C_POPUP_SEARCH)
         if xbmc.getCondVisibility('Control.IsVisible(4103)'):
@@ -4193,6 +4641,18 @@ class PopupMenu(xbmcgui.WindowXMLDialog):
                 programLabelControl.setLabel(label)
             except:
                 pass
+        subtitle = ""
+        if self.program.sub_title:
+            subtitle = '%s' % (self.program.sub_title)
+        elif self.program.categories:
+            subtitle = '%s' % (self.program.categories)
+            subtitle = subtitle.replace(",",", ")
+        else:
+            subtitle = '%s' % (self.program.title)
+        if self.program.season and self.program.episode:
+            subtitle += " - s%se%s" % (self.program.season, self.program.episode)
+        if programSubTitleControl:
+            programSubTitleControl.setLabel(subtitle)
         if self.program.description:
             labelControl.setLabel(self.program.description)
         if self.program.description and xbmc.getCondVisibility('Control.IsVisible(77000)'):
@@ -4201,13 +4661,19 @@ class PopupMenu(xbmcgui.WindowXMLDialog):
             programImageControl.setImage(self.program.imageSmall)
         if self.program.imageLarge:
             programImageControl.setImage(self.program.imageLarge)
-        if self.nextprogram.title and xbmc.getCondVisibility('Control.IsVisible(4106)'):
-            nextprogramTitleControl.setLabel(self.nextprogram.title)
+        try:
+            if self.nextprogram.title and xbmc.getCondVisibility('Control.IsVisible(4106)'):
+                nextprogramTitleControl.setLabel(self.nextprogram.title)
+        except:
+            pass
 
         start = self.program.startDate
         end = self.program.endDate
-        nextstart = self.nextprogram.startDate
-        nextend = self.nextprogram.endDate
+        nextstart = None
+        nextend = None
+        if self.nextprogram:
+            nextstart = self.nextprogram.startDate
+            nextend = self.nextprogram.endDate
 
         if nextstart and xbmc.getCondVisibility('Control.IsVisible(4107)'):
             day = self.formatDateTodayTomorrow(nextstart)
@@ -4368,7 +4834,7 @@ class PopupMenu(xbmcgui.WindowXMLDialog):
                         name = addon.getAddonInfo('name')
                         icon = addon.getAddonInfo('icon')
                 else:
-                    name = "Playlist"
+                    name = "url"
                     icon = xbmcaddon.Addon('script.tvguide.fullscreen').getAddonInfo('icon')
                 if name:
                     try:
@@ -4556,6 +5022,11 @@ class PopupMenu(xbmcgui.WindowXMLDialog):
             if not self.program.channel.isPlayable():
                 playControl = self.getControl(self.C_POPUP_PLAY)
                 #playControl.setEnabled(False)
+        elif controlId == self.C_POPUP_CATCHUP_ADDON:
+            program = self.program
+            if program:
+                self.buttonClicked = controlId
+                self.close()
         elif controlId == self.C_POPUP_CATEGORY:
             cList = self.getControl(self.C_POPUP_CATEGORY)
             item = cList.getSelectedItem()
@@ -5008,7 +5479,7 @@ class StreamSetupDialog(xbmcgui.WindowXMLDialog):
                     name = addon.getAddonInfo('name')
                     icon = addon.getAddonInfo('icon')
             else:
-                name = "Playlist"
+                name = "url"
                 icon = xbmcaddon.Addon('script.tvguide.fullscreen').getAddonInfo('icon')
             if name:
                 try:
@@ -5668,15 +6139,19 @@ class StreamSetupDialog(xbmcgui.WindowXMLDialog):
 
 class ChooseStreamAddonDialog(xbmcgui.WindowXMLDialog):
     C_SELECTION_LIST = 1000
+    C_SELECTION_ADDON_LOGO = 4025
+    C_SELECTION_ADDON_LABEL = 4026
 
-    def __new__(cls, addons):
+    def __new__(cls, addons, name, icon):
         return super(ChooseStreamAddonDialog, cls).__new__(cls, 'script-tvguide-streamaddon.xml', SKIN_PATH, SKIN)
 
-    def __init__(self, addons):
+    def __init__(self, addons, name, icon):
         super(ChooseStreamAddonDialog, self).__init__()
         self.addons = addons
         self.stream = None
         self.title = None
+        self.name = name
+        self.icon = icon
 
     def onInit(self):
         items = list()
@@ -5691,6 +6166,21 @@ class ChooseStreamAddonDialog(xbmcgui.WindowXMLDialog):
         listControl.addItems(items)
 
         self.setFocus(listControl)
+
+        if self.name:
+            try:
+                control = self.getControl(self.C_SELECTION_ADDON_LABEL)
+                if control:
+                    control.setLabel(self.name)
+            except:
+                pass
+        if self.icon:
+            try:
+                control = self.getControl(self.C_SELECTION_ADDON_LOGO)
+                if control:
+                    control.setImage(self.icon)
+            except:
+                pass
 
     def onAction(self, action):
         if action.getId() in [ACTION_PARENT_DIR, ACTION_PREVIOUS_MENU, KEY_NAV_BACK]:
@@ -5864,6 +6354,24 @@ class ProgramListDialog(xbmcgui.WindowXMLDialog):
 
     def close(self):
         super(ProgramListDialog, self).close()
+
+class VODTVDialog(xbmcgui.WindowXMLDialog):
+    C_VOD_LIST = 90000
+
+    def __new__(cls):
+        return super(VODTVDialog, cls).__new__(cls, 'script-tvguide-vod-tv.xml', SKIN_PATH, SKIN)
+
+    def __init__(self):
+        super(VODTVDialog, self).__init__()
+        self.index = -1
+        self.action = None
+
+    def onInit(self):
+        buttonControl = self.getControl(VODTVDialog.C_VOD_LIST)
+        self.setFocus(buttonControl)
+
+    def close(self):
+        super(VODTVDialog, self).close()
 
 class CatMenu(xbmcgui.WindowXMLDialog):
     C_CAT_BACKGROUND = 7000

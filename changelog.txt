@@ -1,3 +1,129 @@
+version 0.0.386
+- Settings\Source\Convert & to &amp;
+
+version 0.0.384-385
+- Settings\Appearance\Channel Shortcut Type += Sort Number  (thanks Doctor-Eggs)
+
+version 0.0.380-383
+- WMC skin (thanks Doctor-Eggs) https://github.com/Doctor-Eggs/script.tvguide.fullscreen.skin.wmc/
+- Norwegian translations (thanks garvord)
+
+version 0.0.378-379
+- Settings\Lab3\Tertiary xmltv source
+- normal yo.tv is broken
+
+version 0.0.377
+- extra 10 pixels right margin for Channel Name text in main epg
+- Settings\Appearance\Custom Date
+-   dt is current datetime
+-   use python datetime.format eg  {dt:%a %b} {dt.day}
+
+version 0.0.376
+- hebrew
+
+version 0.0.375
+- channel id argumenent
+- (Channel Category, Data Source, Channel Id)
+- eg in Kodi favourites.xml: RunScript(script.tvguide.fullscreen,All Channels,xmltv,bbc_one_hd)
+
+version 0.0.374
+- channel search fix
+
+version 0.0.373
+- Settings\Optional\alt.mappings.tsv key / encode
+- export tsv file from Settings \ Backup
+- format is: channel id \t channel name \t url
+-  without the spaces
+
+version 0.0.372
+- Settings\Optional\addons.ini key
+- Settings\Optional\mappings.m3u key
+- encode the server file with the Encode button.
+- encoding will happen on next tvgf start
+
+version 0.0.370-371
+- Settings\Lab2\Data Source = tvguide.co.uk now 2
+- full day of tvguide.co.uk listings with descriptions
+
+version 0.0.365-369
+- Settings\Playback\catchup channel hours
+
+version 0.0.363-364
+- Playback\Catchup Channel can be Meta style or Direct addon style
+- unicode channel import fix
+
+version 0.0.362
+- Lab1\Catchup Urls now work from the List views
+
+version 0.0.361
+- MySearch additions
+- [%ST%] tvdb id [%SI] imdb id [%SY%] year [%SS%] season [%SE%] episode
+- eg copy favourites.xml to addon_data and add
+<favourite name="My Addon TV" thumb="special://home/addons/plugin.video.MY_ADDON/icon.png">plugin://plugin.video.MY_ADDON/?action=play&amp;year=[%SY%]&amp;tvshowtitle=[%SF%]&amp;season=[%SS%]&amp;episode=[%SE%]&amp;tvdb=[%ST%]&amp;title=[%SF%]</favourite>
+<favourite name="My Addon Movie" thumb="special://home/addons/plugin.video.MY_ADDON/icon.png">plugin://plugin.video.MY_ADDON/?action=play&amp;imdb=[%SI%]&amp;year=[%SY%]&amp;title=[%SF%]</favourite>
+
+version 0.0.360
+- Catchup Urls for imdb/tvdb ids
+- use "Settings\Lab1\Ask to Catchup = Always" for future programs too
+- Settings \ Lab1 \ %B IMDb Id %V TVDb Id %W tv show title
+- eg catchup.ini:
+-   My Addon TV=plugin://plugin.video.MY_ADDON/?action=play&amp;year=%Y&amp;tvshowtitle=%W&amp;season=%S&amp;episode=%E&amp;tvdb=%V&amp;title=%T
+-   My Addon Movie=plugin://plugin.video.MY_ADDON/?action=play&amp;imdb=%B&amp;year=%Y&amp;title=%T
+
+version 0.0.359
+- Settings \ Source \ XMLTV Timezone Offset (minutes)
+
+version 0.0.356-358
+- look for tvg-id in Optional \ Import m3u and m3u Subscriptions
+- %y movie year for Catchup Addons url format
+
+version 0.0.352-355
+- multiple Catchup Addons in Lab1 \ Manage Catchup Urls
+- Catchup Addon dialog via Lab1 \ Ask to Catchup
+- removed ffmpeg chmod
+- only download tvgf backgrounds
+
+version 0.0.351
+- Settings \ Appearance \ Show Addon Logo in EPG above Program Image
+- use controls 44025 and 44026 for addon logo and name in main xml file
+- Settings \ Lab1 \ Catchup url
+- Catchup Command Action and Button
+- eg plugin://plugin.video.XXX/catchup/%I/%Y-%m-%d:%H-%M/%T/%D
+- Catchup Addon button is hidden in Default skin and has id 4017
+
+version 0.0.350
+- re-enable ActivateWindow Favourites shortcut to play Folders
+
+version 0.0.349
+- ignore url file names (force xmltv.xml, xmltv2.xml, mapping.ini etc)
+
+version 0.0.348
+- vod additions
+
+version 0.0.347
+- current addon name and icon controls in streamaddon
+- Listing View Future Days fix
+
+version 0.0.344-346
+- New VOD Screen from RayW1986
+ (via Menu VOD, Default skin VOD button, COMMAND_VOD in Action Editor)
+
+version 0.0.343
+- Settings \ Lab2 \ Include Sports Fixtures in xmltv Source
+
+version 0.0.342
+- Settings \ Appearance \ Show dummy channels on final page
+- Settings \ Lab2 \ Sports Fixtures
+
+version 0.0.340-341
+- smoother epg scrolling
+
+version 0.0.339
+- Settings \ Logos \ Crop and Resize Logo Folder
+
+version 0.0.338
+- on-top time bar (skinners: preload tvgf-timebar.png (see Default))
+
 version 0.0.337
 - m3u fix
 
@@ -19,7 +145,7 @@ version 0.0.332
 - support for White Snow skin Help button
 
 version 0.17.331
-- Krypton fix for HLS m3u stream urls like Jarvis (play start should be much faster)
+- Settings \ Playback \ Use highest bandwidth stream from m3u url (Krypton+ fix)
 
 version 0.0.330
 - integration with VPN Manager for OpenVPN from Zomboided (https://github.com/Zomboided/service.vpn.manager)

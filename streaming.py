@@ -59,12 +59,12 @@ class StreamsService(object):
                         value = value[11:-2]
                     elif value[0:10] == 'PlayMedia(':
                         value = value[10:-1]
-                    elif value[0:22] == 'ActivateWindow(10025,"':
-                        value = value[22:-9]
-                    elif value[0:21] == 'ActivateWindow(10025,':
-                        value = value[22:-8]
-                    else:
-                        continue
+                    #elif value[0:22] == 'ActivateWindow(10025,"':
+                    #    value = value[22:-9]
+                    #elif value[0:21] == 'ActivateWindow(10025,':
+                    #    value = value[22:-8]
+                    #else:
+                    #    continue
 
                     entries.append((node.get('name'), value))
             except:
@@ -101,6 +101,10 @@ class StreamsService(object):
         exact_matches = []
         sub_matches = []
         numword_matches = []
+        if self.addon.getSetting('catchup.type') == "0":
+            catchup = self.addon.getSetting('catchup.text')
+        else:
+            catchup = self.addon.getSetting('catchup.direct')
         for id in self.getAddons():
             try:
                 xbmcaddon.Addon(id)
@@ -110,7 +114,7 @@ class StreamsService(object):
             for (label, stream) in self.getAddonStreams(id):
                 if type(stream) is list:
                     stream = stream[0]
-                if id == "plugin.video.%s" % self.addon.getSetting('catchup.text').lower():
+                if id == "plugin.video.%s" % catchup.lower():
                     label = channel.title
                     stream = str(stream.replace("<channel>", channel.title.replace(" ","%20")))
 
