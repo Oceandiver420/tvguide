@@ -350,6 +350,7 @@ class Database(object):
             imported = imported_channels = imported_programs = 0
 
             if getData == True:
+                xbmcvfs.delete('special://profile/addon_data/script.tvguide.fullscreen/category_count.ini')
                 catchup = ADDON.getSetting('catchup.text')
                 channel = Channel("catchup", catchup, '', "special://home/addons/plugin.video.%s/icon.png" % catchup.lower(), "catchup", ADDON.getSetting('catchup.channel') == 'true')
                 c.execute(
@@ -1700,9 +1701,10 @@ class XMLTVSource(Source):
                 f.close
                 if not data:
                     d.notification("TV Guide Fullscreen","%s - %s" % (name,sub), xbmcgui.NOTIFICATION_ERROR)
-                name_stream = re.findall(r'#EXTINF:.*?,(.*?)\n(.*?)\n',data,flags=(re.DOTALL | re.MULTILINE))
+                name_stream = re.findall(r'#EXTINF:.*,(.*?)\n(.*?)\n',data,flags=(re.MULTILINE))
                 for name,stream in name_stream:
                     if name and stream:
+                        name = re.sub('[\|=:\\\/]','',name)
                         subscription_streams[name.strip()] = stream.strip()
 
 
